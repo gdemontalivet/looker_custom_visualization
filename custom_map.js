@@ -2,6 +2,12 @@ looker.plugins.visualizations.add({
   id: "custom_map_polygon_labels",
   label: "Custom Map with Polygons and Labels",
   options: {
+    polygonColor: {
+      type: "string",
+      label: "Polygon Fill Color",
+      display: "color",
+      default: "#ff0000"
+    },
     polygonLineColor: {
       type: "string",
       label: "Polygon Line Color",
@@ -37,18 +43,6 @@ looker.plugins.visualizations.add({
         { "Hide": false }
       ],
       default: true
-    },
-    gradientStartColor: {
-      type: "string",
-      label: "Gradient Start Color",
-      display: "color",
-      default: "#ff0000"
-    },
-    gradientEndColor: {
-      type: "string",
-      label: "Gradient End Color",
-      display: "color",
-      default: "#00ff00"
     },
     googleMapsApiKey: {
       type: "string",
@@ -129,7 +123,6 @@ looker.plugins.visualizations.add({
     }
 
     const labelColumn = queryResponse.fields.dimensions.find(d => d.name !== polygonColumn.name);
-    const measureColumn = queryResponse.fields.measures[0]; // Assuming the measure is the third column
 
     // Initialize the map if not already created
     var mapContainer = element.querySelector('#map');
@@ -159,54 +152,22 @@ looker.plugins.visualizations.add({
 
     var bounds = L.latLngBounds();
 
-    // Helper function to interpolate colors
-    function interpolateColor(color1, color2, factor) {
-      const result = color1.slice();
-      for (let i = 0; i < 3; i++) {
-        result[i] = Math.round(result[i] + factor * (color2[i] - result[i]));
-      }
-      return result;
-    }
-
-    // Convert hex to RGB
-    function hexToRgb(hex) {
-      const bigint = parseInt(hex.slice(1), 16);
-      const r = (bigint >> 16) & 255;
-      const g = (bigint >> 8) & 255;
-      const b = bigint & 255;
-      return [r, g, b];
-    }
-
-    const startColor = hexToRgb(config.gradientStartColor);
-    const endColor = hexToRgb(config.gradientEndColor);
-
-    // Determine the min and max measure values for scaling
-    const measureValues = data.map(row => row[measureColumn.name].value);
-    const minMeasureValue = Math.min(...measureValues);
-    const maxMeasureValue = Math.max(...measureValues);
-
     // Process each row of data to create polygons and labels
     data.forEach(function(row) {
       // Process polygons
       var polygonData = row[polygonColumn.name];
       var polygonName = row[labelColumn.name]; // Use the second dimension for labels
       var polygonFilterValue = polygonName.value; // Value to be used for cross-filtering
-      var measureValue = row[measureColumn.name].value;
 
       if (polygonData && polygonData.value) {
         var coordinates = JSON.parse(polygonData.value);
         var latlngs = coordinates.map(function(coord) {
           return [coord[1], coord[0]]; // Leaflet expects [lat, lng]
         });
-
-        // Calculate the color based on the measure value
-        const factor = (measureValue - minMeasureValue) / (maxMeasureValue - minMeasureValue);
-        const fillColor = `rgb(${interpolateColor(startColor, endColor, factor).join(',')})`;
-
         var polygon = L.polygon(latlngs, {
           color: config.polygonLineColor,
           weight: config.polygonLineWidth,
-          fillColor: fillColor,
+          fillColor: config.polygonColor,
           fillOpacity: config.polygonFillOpacity,
           opacity: 1,
           pane: 'overlayPane' // Ensure polygons are added to the overlayPane
