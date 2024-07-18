@@ -65,15 +65,20 @@ looker.plugins.visualizations.add({
   },
   create: function(element, config) {
     // Create the container element for the map
-    element.innerHTML = "<div id='map' style='width: 100%; height: 100%;'></div>";
+    element.innerHTML = `
+      <div id='map' style='width: 100%; height: 90%;'></div>
+      <button id='reset-selection' style='width: 100%; height: 10%;'>Reset Selection</button>
+    `;
 
     this._map = null;
+    this._drawingManager = null;
     this._shapes = [];
+    this._currentRectangle = null; // Track the current rectangle
 
     // Load Google Maps JavaScript API
     const apiKey = config.googleMapsApiKey;
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=drawing,marker&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=drawing,marker&v=weekly&callback=initMap`;
     script.async = true;
     script.defer = true;
     script.onload = () => {
@@ -128,11 +133,71 @@ looker.plugins.visualizations.add({
 
     // Initialize the map if not already created
     var mapContainer = element.querySelector('#map');
+    var resetButton = element.querySelector('#reset-selection');
     if (!this._map) {
       this._map = new google.maps.Map(mapContainer, {
         center: { lat: 0, lng: 0 },
         zoom: 2,
         mapId: 'DEMO_MAP_ID'  // Replace with your actual Map ID
+      });
+
+      // Initialize the drawing manager
+      this._drawingManager = new google.maps.drawing.DrawingManager({
+        drawingMode: google.maps.drawing.OverlayType.RECTANGLE,
+        drawingControl: true,
+        drawingControlOptions: {
+          position: google.maps.ControlPosition.TOP_CENTER,
+          drawingModes: ['rectangle']
+        },
+        rectangleOptions: {
+          fillColor: '#ffff00',
+          fillOpacity: 0.5,
+          strokeWeight: 2,
+          clickable: true,
+          editable: true,
+          draggable: true
+        }
+      });
+
+      this._drawingManager.setMap(this._map);
+
+      google.maps.event.addListener(this._drawingManager, 'rectanglecomplete', (rectangle) => {
+        // Remove the existing rectangle if there is one
+        if (this._currentRectangle) {
+          this._currentRectangle.setMap(null);
+        }
+        this._currentRectangle = rectangle;
+
+        const bounds = rectangle.getBounds();
+        const ne = bounds.getNorthEast(); // North East corner
+        const sw = bounds.getSouthWest(); // South West corner
+
+        // Handle the coordinates for the drawn rectangle
+        console.log(`Rectangle drawn with coordinates: NE(${ne.lat()}, ${ne.lng()}), SW(${sw.lat()}, ${sw.lng()})`);
+
+        // Trigger the filter
+        this.trigger('filter', [{
+          field: "sql_runner_query2.int_point_lat", // Replace with the actual field name for latitude
+          value: `${sw.lat()} to ${ne.lat()}`, // Filter range for latitude
+          run: true,
+        }, {
+          field: "sql_runner_query2.int_point_lon", // Replace with the actual field name for longitude
+          value: `${sw.lng()} to ${ne.lng()}`, // Filter range for longitude
+          run: true,
+        }]);
+
+        // Optionally do something with the rectangle, e.g., filter data or highlight on the map
+      });
+
+      // Add event listener for reset button
+      resetButton.addEventListener('click', () => {
+        // Remove the current rectangle
+        if (this._currentRectangle) {
+          this._currentRectangle.setMap(null);
+          this._currentRectangle = null;
+        }
+        // Disable drawing mode
+        this._drawingManager.setDrawingMode(null);
       });
     } else {
       this._shapes.forEach(shape => shape.setMap(null));
